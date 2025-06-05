@@ -6,17 +6,17 @@ use uuid::Uuid;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Text Synchronization Demo ===");
-    
+
     // Connect first client
     let (ws_stream1, _) = connect_async("ws://127.0.0.1:8080").await?;
     println!("✓ Client 1 connected");
     let (mut sender1, mut receiver1) = ws_stream1.split();
-    
+
     // Connect second client
     let (ws_stream2, _) = connect_async("ws://127.0.0.1:8080").await?;
     println!("✓ Client 2 connected");
     let (mut sender2, mut receiver2) = ws_stream2.split();
-    
+
     // Register Client 1
     let register1 = json!({
         "jsonrpc": "2.0",
@@ -24,8 +24,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "params": { "client_name": "Alice" },
         "id": 1
     });
-    sender1.send(Message::Text(serde_json::to_string(&register1)?.into())).await?;
-    
+    sender1
+        .send(Message::Text(serde_json::to_string(&register1)?.into()))
+        .await?;
+
     // Register Client 2
     let register2 = json!({
         "jsonrpc": "2.0",
@@ -33,8 +35,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "params": { "client_name": "Bob" },
         "id": 1
     });
-    sender2.send(Message::Text(serde_json::to_string(&register2)?.into())).await?;
-    
+    sender2
+        .send(Message::Text(serde_json::to_string(&register2)?.into()))
+        .await?;
+
     // Get registration responses
     let mut client1_id = None;
     let mut client2_id = None;
@@ -77,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    
+
     // Client 1 creates a document
     let create_doc = json!({
         "jsonrpc": "2.0",
@@ -85,14 +89,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "params": { "name": "shared_document.txt" },
         "id": 2
     });
-    sender1.send(Message::Text(serde_json::to_string(&create_doc)?.into())).await?;
-    
+    sender1
+        .send(Message::Text(serde_json::to_string(&create_doc)?.into()))
+        .await?;
+
     // Get document creation response and notifications
     let mut document_id = None;
     let mut messages_received = 0;
-    
+
     // Process messages until we get the document creation response
-    while messages_received < 4 { // Expect: 2 client_connected notifications + 1 doc creation response
+    while messages_received < 4 {
+        // Expect: 2 client_connected notifications + 1 doc creation response
         tokio::select! {
             msg1 = receiver1.next() => {
                 if let Some(Ok(Message::Text(text))) = msg1 {
@@ -118,10 +125,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    
+
     if let Some(doc_id) = document_id {
         println!("\n=== Testing Document Updates ===");
-        
+
         // Alice updates the document
         let update_doc = json!({
             "jsonrpc": "2.0",
@@ -134,11 +141,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             "id": 3
         });
-        sender1.send(Message::Text(serde_json::to_string(&update_doc)?.into())).await?;
-        
+        sender1
+            .send(Message::Text(serde_json::to_string(&update_doc)?.into()))
+            .await?;
+
         // Wait for update responses and notifications
         let mut updates_received = 0;
-        while updates_received < 2 { // Expect response + notification
+        while updates_received < 2 {
+            // Expect response + notification
             tokio::select! {
                 msg1 = receiver1.next() => {
                     if let Some(Ok(Message::Text(text))) = msg1 {
@@ -154,7 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        
+
         // Bob updates the document
         let update_doc2 = json!({
             "jsonrpc": "2.0",
@@ -167,8 +177,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             "id": 3
         });
-        sender2.send(Message::Text(serde_json::to_string(&update_doc2)?.into())).await?;
-        
+        sender2
+            .send(Message::Text(serde_json::to_string(&update_doc2)?.into()))
+            .await?;
+
         // Wait for final updates
         let mut final_updates = 0;
         while final_updates < 2 {
@@ -187,7 +199,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        
+
         // Get final document state
         let get_doc = json!({
             "jsonrpc": "2.0",
@@ -195,13 +207,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "params": { "document_id": doc_id },
             "id": 4
         });
-        sender1.send(Message::Text(serde_json::to_string(&get_doc)?.into())).await?;
-        
+        sender1
+            .send(Message::Text(serde_json::to_string(&get_doc)?.into()))
+            .await?;
+
         if let Some(Ok(Message::Text(text))) = receiver1.next().await {
             println!("\nFinal document state: {}", text);
         }
     }
-    
+
     println!("\n✓ Synchronization demo completed successfully!");
     Ok(())
 }

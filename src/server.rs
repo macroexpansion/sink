@@ -188,11 +188,13 @@ async fn handle_rpc_request(
 ) -> JsonRpcResponse {
     match request.method.as_str() {
         "client.register" => {
-            if let Ok(params) = serde_json::from_value::<serde_json::Map<String, Value>>(request.params) {
+            if let Ok(params) =
+                serde_json::from_value::<serde_json::Map<String, Value>>(request.params)
+            {
                 if let Some(Value::String(client_name)) = params.get("client_name") {
                     let id = state.register_client(client_name.clone(), addr).await;
                     *client_id = Some(id);
-                    
+
                     let response = SyncResponse::ClientRegistered { client_id: id };
                     return JsonRpcResponse::success(
                         serde_json::to_value(response).unwrap(),
@@ -202,13 +204,15 @@ async fn handle_rpc_request(
             }
             JsonRpcResponse::error(JsonRpcError::invalid_params(), request.id)
         }
-        
+
         "document.create" => {
-            if let Ok(params) = serde_json::from_value::<serde_json::Map<String, Value>>(request.params) {
+            if let Ok(params) =
+                serde_json::from_value::<serde_json::Map<String, Value>>(request.params)
+            {
                 if let Some(Value::String(name)) = params.get("name") {
                     let mut documents = state.documents.write().await;
                     let document = documents.create_document(name.clone());
-                    
+
                     let response = SyncResponse::DocumentCreated {
                         document_id: document.id,
                         name: document.name.clone(),
@@ -221,9 +225,11 @@ async fn handle_rpc_request(
             }
             JsonRpcResponse::error(JsonRpcError::invalid_params(), request.id)
         }
-        
+
         "document.get" => {
-            if let Ok(params) = serde_json::from_value::<serde_json::Map<String, Value>>(request.params) {
+            if let Ok(params) =
+                serde_json::from_value::<serde_json::Map<String, Value>>(request.params)
+            {
                 if let Some(Value::String(doc_id_str)) = params.get("document_id") {
                     if let Ok(doc_id) = Uuid::parse_str(doc_id_str) {
                         let documents = state.documents.read().await;
@@ -241,12 +247,17 @@ async fn handle_rpc_request(
                     }
                 }
             }
-            JsonRpcResponse::error(JsonRpcError::custom(-1, "Document not found".to_string()), request.id)
+            JsonRpcResponse::error(
+                JsonRpcError::custom(-1, "Document not found".to_string()),
+                request.id,
+            )
         }
-        
+
         "document.update" => {
             if let Some(current_client_id) = client_id {
-                if let Ok(params) = serde_json::from_value::<serde_json::Map<String, Value>>(request.params) {
+                if let Ok(params) =
+                    serde_json::from_value::<serde_json::Map<String, Value>>(request.params)
+                {
                     if let (
                         Some(Value::String(doc_id_str)),
                         Some(Value::String(content)),
@@ -268,12 +279,14 @@ async fn handle_rpc_request(
                                 timestamp.with_timezone(&Utc),
                             ) {
                                 // Broadcast the update to all clients
-                                state.broadcast_document_update(
-                                    doc_id,
-                                    content.clone(),
-                                    *current_client_id,
-                                ).await;
-                                
+                                state
+                                    .broadcast_document_update(
+                                        doc_id,
+                                        content.clone(),
+                                        *current_client_id,
+                                    )
+                                    .await;
+
                                 let response = SyncResponse::DocumentUpdated {
                                     document_id: document.id,
                                     content: document.content.clone(),
@@ -290,18 +303,17 @@ async fn handle_rpc_request(
             }
             JsonRpcResponse::error(JsonRpcError::invalid_params(), request.id)
         }
-        
+
         "document.list" => {
             let documents = state.documents.read().await;
             let doc_list = documents.list_documents();
-            
-            let response = SyncResponse::DocumentList { documents: doc_list };
-            JsonRpcResponse::success(
-                serde_json::to_value(response).unwrap(),
-                request.id,
-            )
+
+            let response = SyncResponse::DocumentList {
+                documents: doc_list,
+            };
+            JsonRpcResponse::success(serde_json::to_value(response).unwrap(), request.id)
         }
-        
+
         _ => JsonRpcResponse::error(JsonRpcError::method_not_found(), request.id),
     }
 }

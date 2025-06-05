@@ -5,13 +5,13 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing basic WebSocket connection...");
-    
+
     // Connect to the server
     let (ws_stream, _) = connect_async("ws://127.0.0.1:8080").await?;
     println!("✓ Connected to server");
-    
+
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-    
+
     // Send registration request
     let register_request = json!({
         "jsonrpc": "2.0",
@@ -21,17 +21,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         "id": 1
     });
-    
+
     let request_text = serde_json::to_string(&register_request)?;
     ws_sender.send(Message::Text(request_text.into())).await?;
     println!("✓ Sent registration request");
-    
+
     // Wait for response
     if let Some(msg) = ws_receiver.next().await {
         match msg? {
             Message::Text(text) => {
                 println!("✓ Received response: {}", text);
-                
+
                 // Parse the response
                 if let Ok(response) = serde_json::from_str::<Value>(&text) {
                     if let Some(result) = response.get("result") {
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => println!("Received non-text message"),
         }
     }
-    
+
     // Send document creation request
     let create_doc_request = json!({
         "jsonrpc": "2.0",
@@ -54,11 +54,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         "id": 2
     });
-    
+
     let request_text = serde_json::to_string(&create_doc_request)?;
     ws_sender.send(Message::Text(request_text.into())).await?;
     println!("✓ Sent document creation request");
-    
+
     // Wait for response (might receive notification first)
     let mut received_doc_response = false;
     while !received_doc_response {
@@ -85,7 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
     }
-    
+
     println!("✓ Test completed successfully");
     Ok(())
 }

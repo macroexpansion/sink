@@ -1,4 +1,4 @@
-use sink::{SyncServer, SyncClient, SyncNotification};
+use sink::{SyncClient, SyncNotification, SyncServer};
 use std::env;
 
 #[tokio::main]
@@ -7,7 +7,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if args.len() < 2 {
         println!("Usage:");
-        println!("  {} server [port]           - Start the sync server", args[0]);
+        println!(
+            "  {} server [port]           - Start the sync server",
+            args[0]
+        );
         println!("  {} client <name> [url]     - Start a client", args[0]);
         return Ok(());
     }
@@ -29,7 +32,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             let client_name = args[2].clone();
-            let url = args.get(3).unwrap_or(&"ws://127.0.0.1:8080".to_string()).clone();
+            let url = args
+                .get(3)
+                .unwrap_or(&"ws://127.0.0.1:8080".to_string())
+                .clone();
 
             println!("Starting client '{}' connecting to {}", client_name, url);
 
@@ -42,34 +48,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Created document with ID: {}", doc_id);
 
             println!("Updating document content...");
-            client.update_document(doc_id, "Hello, world!".to_string()).await?;
+            client
+                .update_document(doc_id, "Hello, world!".to_string())
+                .await?;
 
             println!("Getting document content...");
             let (content, last_modified) = client.get_document(doc_id).await?;
-            println!("Document content: '{}' (last modified: {})", content, last_modified);
+            println!(
+                "Document content: '{}' (last modified: {})",
+                content, last_modified
+            );
 
             println!("Listing all documents...");
             let documents = client.list_documents().await?;
             for doc in documents {
-                println!("  - {} (ID: {}, {} bytes)", doc.name, doc.id, doc.content_length);
+                println!(
+                    "  - {} (ID: {}, {} bytes)",
+                    doc.name, doc.id, doc.content_length
+                );
             }
 
             // Start listening for notifications
             println!("Listening for real-time updates...");
-            client.start_listening(|notification: SyncNotification| {
-                match notification.params {
-                    sink::SyncNotificationParams::DocumentUpdated { document_id, content, timestamp, client_id } => {
-                        println!("Document {} updated by client {}: '{}' at {}",
-                                document_id, client_id, content, timestamp);
+            client
+                .start_listening(|notification: SyncNotification| match notification.params {
+                    sink::SyncNotificationParams::DocumentUpdated {
+                        document_id,
+                        content,
+                        timestamp,
+                        client_id,
+                    } => {
+                        println!(
+                            "Document {} updated by client {}: '{}' at {}",
+                            document_id, client_id, content, timestamp
+                        );
                     }
-                    sink::SyncNotificationParams::ClientConnected { client_id, client_name } => {
+                    sink::SyncNotificationParams::ClientConnected {
+                        client_id,
+                        client_name,
+                    } => {
                         println!("Client connected: {} ({})", client_name, client_id);
                     }
                     sink::SyncNotificationParams::ClientDisconnected { client_id } => {
                         println!("Client disconnected: {}", client_id);
                     }
-                }
-            }).await?;
+                })
+                .await?;
         }
 
         _ => {

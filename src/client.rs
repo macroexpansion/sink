@@ -9,6 +9,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, Web
 use uuid::Uuid;
 
 /// Text synchronization client
+#[derive(Debug)]
 pub struct SyncClient {
     client_id: Option<Uuid>,
     client_name: String,
@@ -30,10 +31,10 @@ impl SyncClient {
     pub async fn connect(&mut self, url: &str) -> Result<(), Box<dyn std::error::Error>> {
         let (ws_stream, _) = connect_async(url).await?;
         self.ws_stream = Some(ws_stream);
-        
+
         // Register with the server
         self.register().await?;
-        
+
         println!("Connected to sync server at {}", url);
         Ok(())
     }
@@ -41,10 +42,15 @@ impl SyncClient {
     /// Register this client with the server
     async fn register(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut params = serde_json::Map::new();
-        params.insert("client_name".to_string(), Value::String(self.client_name.clone()));
-        
-        let response = self.send_request("client.register", Value::Object(params)).await?;
-        
+        params.insert(
+            "client_name".to_string(),
+            Value::String(self.client_name.clone()),
+        );
+
+        let response = self
+            .send_request("client.register", Value::Object(params))
+            .await?;
+
         if let Some(result) = response.result {
             if let Ok(sync_response) = serde_json::from_value::<SyncResponse>(result) {
                 if let SyncResponse::ClientRegistered { client_id } = sync_response {
@@ -54,17 +60,22 @@ impl SyncClient {
                 }
             }
         }
-        
+
         Err("Failed to register with server".into())
     }
 
     /// Create a new document
-    pub async fn create_document(&mut self, name: String) -> Result<Uuid, Box<dyn std::error::Error>> {
+    pub async fn create_document(
+        &mut self,
+        name: String,
+    ) -> Result<Uuid, Box<dyn std::error::Error>> {
         let mut params = serde_json::Map::new();
         params.insert("name".to_string(), Value::String(name));
-        
-        let response = self.send_request("document.create", Value::Object(params)).await?;
-        
+
+        let response = self
+            .send_request("document.create", Value::Object(params))
+            .await?;
+
         if let Some(result) = response.result {
             if let Ok(sync_response) = serde_json::from_value::<SyncResponse>(result) {
                 if let SyncResponse::DocumentCreated { document_id, .. } = sync_response {
@@ -72,53 +83,85 @@ impl SyncClient {
                 }
             }
         }
-        
+
         Err("Failed to create document".into())
     }
 
     /// Get document content
-    pub async fn get_document(&mut self, document_id: Uuid) -> Result<(String, chrono::DateTime<Utc>), Box<dyn std::error::Error>> {
+    pub async fn get_document(
+        &mut self,
+        document_id: Uuid,
+    ) -> Result<(String, chrono::DateTime<Utc>), Box<dyn std::error::Error>> {
         let mut params = serde_json::Map::new();
-        params.insert("document_id".to_string(), Value::String(document_id.to_string()));
-        
-        let response = self.send_request("document.get", Value::Object(params)).await?;
-        
+        params.insert(
+            "document_id".to_string(),
+            Value::String(document_id.to_string()),
+        );
+
+        let response = self
+            .send_request("document.get", Value::Object(params))
+            .await?;
+
         if let Some(result) = response.result {
             if let Ok(sync_response) = serde_json::from_value::<SyncResponse>(result) {
-                if let SyncResponse::DocumentContent { content, last_modified, .. } = sync_response {
+                if let SyncResponse::DocumentContent {
+                    content,
+                    last_modified,
+                    ..
+                } = sync_response
+                {
                     return Ok((content, last_modified));
                 }
             }
         }
-        
+
         Err("Failed to get document".into())
     }
 
     /// Update document content
-    pub async fn update_document(&mut self, document_id: Uuid, content: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn update_document(
+        &mut self,
+        document_id: Uuid,
+        content: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if self.client_id.is_none() {
             return Err("Client not registered".into());
         }
 
         let mut params = serde_json::Map::new();
-        params.insert("document_id".to_string(), Value::String(document_id.to_string()));
+        params.insert(
+            "document_id".to_string(),
+            Value::String(document_id.to_string()),
+        );
         params.insert("content".to_string(), Value::String(content));
-        params.insert("timestamp".to_string(), Value::String(Utc::now().to_rfc3339()));
-        params.insert("client_id".to_string(), Value::String(self.client_id.unwrap().to_string()));
-        
-        let response = self.send_request("document.update", Value::Object(params)).await?;
-        
+        params.insert(
+            "timestamp".to_string(),
+            Value::String(Utc::now().to_rfc3339()),
+        );
+        params.insert(
+            "client_id".to_string(),
+            Value::String(self.client_id.unwrap().to_string()),
+        );
+
+        let response = self
+            .send_request("document.update", Value::Object(params))
+            .await?;
+
         if response.error.is_some() {
             return Err("Failed to update document".into());
         }
-        
+
         Ok(())
     }
 
     /// List all documents
-    pub async fn list_documents(&mut self) -> Result<Vec<DocumentInfo>, Box<dyn std::error::Error>> {
-        let response = self.send_request("document.list", Value::Object(serde_json::Map::new())).await?;
-        
+    pub async fn list_documents(
+        &mut self,
+    ) -> Result<Vec<DocumentInfo>, Box<dyn std::error::Error>> {
+        let response = self
+            .send_request("document.list", Value::Object(serde_json::Map::new()))
+            .await?;
+
         if let Some(result) = response.result {
             if let Ok(sync_response) = serde_json::from_value::<SyncResponse>(result) {
                 if let SyncResponse::DocumentList { documents } = sync_response {
@@ -126,18 +169,24 @@ impl SyncClient {
                 }
             }
         }
-        
+
         Err("Failed to list documents".into())
     }
 
     /// Start listening for notifications from the server
-    pub async fn start_listening<F>(&mut self, mut notification_handler: F) -> Result<(), Box<dyn std::error::Error>>
+    pub async fn start_listening<F>(
+        &mut self,
+        mut notification_handler: F,
+    ) -> Result<(), Box<dyn std::error::Error>>
     where
         F: FnMut(SyncNotification) + Send + 'static,
     {
         if let Some(ws_stream) = self.ws_stream.take() {
             let (_ws_sender, mut ws_receiver) = ws_stream.split();
-            let (_request_tx, mut _request_rx) = mpsc::unbounded_channel::<(JsonRpcRequest, tokio::sync::oneshot::Sender<JsonRpcResponse>)>();
+            let (_request_tx, mut _request_rx) = mpsc::unbounded_channel::<(
+                JsonRpcRequest,
+                tokio::sync::oneshot::Sender<JsonRpcResponse>,
+            )>();
 
             // Handle outgoing requests (simplified for demo)
             let outgoing_task = tokio::spawn(async move {
@@ -152,11 +201,15 @@ impl SyncClient {
                     match msg {
                         Ok(Message::Text(text)) => {
                             // Try to parse as notification first
-                            if let Ok(notification) = serde_json::from_str::<SyncNotification>(&text) {
+                            if let Ok(notification) =
+                                serde_json::from_str::<SyncNotification>(&text)
+                            {
                                 notification_handler(notification);
                             }
                             // Otherwise try to parse as response
-                            else if let Ok(_response) = serde_json::from_str::<JsonRpcResponse>(&text) {
+                            else if let Ok(_response) =
+                                serde_json::from_str::<JsonRpcResponse>(&text)
+                            {
                                 // Handle response - match with pending request
                                 // This is simplified for the example
                             }
@@ -182,7 +235,11 @@ impl SyncClient {
     }
 
     /// Send a JSON-RPC request and wait for response
-    async fn send_request(&mut self, method: &str, params: Value) -> Result<JsonRpcResponse, Box<dyn std::error::Error>> {
+    async fn send_request(
+        &mut self,
+        method: &str,
+        params: Value,
+    ) -> Result<JsonRpcResponse, Box<dyn std::error::Error>> {
         if self.ws_stream.is_none() {
             return Err("Not connected to server".into());
         }
@@ -210,7 +267,8 @@ impl SyncClient {
             while let Some(msg) = receiver.next().await {
                 if let Ok(Message::Text(text)) = msg {
                     if let Ok(response) = serde_json::from_str::<JsonRpcResponse>(&text) {
-                        if response.id == Some(Value::Number(serde_json::Number::from(request_id))) {
+                        if response.id == Some(Value::Number(serde_json::Number::from(request_id)))
+                        {
                             // Reconstruct the stream
                             self.ws_stream = Some(sender.reunite(receiver)?);
                             return Ok(response);

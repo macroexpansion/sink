@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// JSON-RPC 2.0 Request
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,24 +37,24 @@ pub struct JsonRpcError {
 pub enum SyncMethod {
     #[serde(rename = "document.create")]
     CreateDocument { name: String },
-    
+
     #[serde(rename = "document.open")]
     OpenDocument { document_id: Uuid },
-    
+
     #[serde(rename = "document.update")]
-    UpdateDocument { 
-        document_id: Uuid, 
+    UpdateDocument {
+        document_id: Uuid,
         content: String,
         timestamp: DateTime<Utc>,
         client_id: Uuid,
     },
-    
+
     #[serde(rename = "document.get")]
     GetDocument { document_id: Uuid },
-    
+
     #[serde(rename = "document.list")]
     ListDocuments,
-    
+
     #[serde(rename = "client.register")]
     RegisterClient { client_name: String },
 }
@@ -66,11 +66,6 @@ pub enum SyncResponse {
     DocumentCreated {
         document_id: Uuid,
         name: String,
-    },
-    DocumentOpened {
-        document_id: Uuid,
-        content: String,
-        last_modified: DateTime<Utc>,
     },
     DocumentUpdated {
         document_id: Uuid,
@@ -122,9 +117,7 @@ pub enum SyncNotificationParams {
         client_name: String,
     },
     #[serde(rename = "client_disconnected")]
-    ClientDisconnected {
-        client_id: Uuid,
-    },
+    ClientDisconnected { client_id: Uuid },
 }
 
 impl JsonRpcRequest {

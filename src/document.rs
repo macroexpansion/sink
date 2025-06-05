@@ -90,10 +90,7 @@ impl DocumentStore {
     }
 
     pub fn list_documents(&self) -> Vec<crate::rpc::DocumentInfo> {
-        self.documents
-            .values()
-            .map(|doc| doc.get_info())
-            .collect()
+        self.documents.values().map(|doc| doc.get_info()).collect()
     }
 
     pub fn document_exists(&self, id: &Uuid) -> bool {
@@ -118,9 +115,9 @@ mod tests {
         let mut doc = Document::new("test.txt".to_string());
         let client_id = Uuid::new_v4();
         let timestamp = Utc::now();
-        
+
         doc.update_content("Hello, world!".to_string(), client_id, timestamp);
-        
+
         assert_eq!(doc.content, "Hello, world!");
         assert_eq!(doc.last_modified_by, Some(client_id));
         assert_eq!(doc.version, 1);
@@ -129,13 +126,13 @@ mod tests {
     #[test]
     fn test_document_store() {
         let mut store = DocumentStore::new();
-        
+
         let doc = store.create_document("test.txt".to_string());
         let doc_id = doc.id;
-        
+
         assert!(store.document_exists(&doc_id));
         assert_eq!(store.list_documents().len(), 1);
-        
+
         let client_id = Uuid::new_v4();
         let updated_doc = store.update_document(
             &doc_id,
@@ -143,7 +140,7 @@ mod tests {
             client_id,
             Utc::now(),
         );
-        
+
         assert!(updated_doc.is_some());
         assert_eq!(updated_doc.unwrap().content, "Updated content");
     }
