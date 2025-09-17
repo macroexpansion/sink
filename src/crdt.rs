@@ -71,7 +71,9 @@ impl From<&Message> for Text {
     }
 }
 
+// RGA-inspired CRDT implementation
 pub struct CRDT {
+    replica_id: String,
     ops: Arc<Mutex<BTreeSet<Message>>>,
     content: Arc<Mutex<BTreeSet<Text>>>,
 }
@@ -79,6 +81,7 @@ pub struct CRDT {
 impl CRDT {
     pub fn new() -> Self {
         Self {
+            replica_id: nanoid::nanoid!(),
             ops: Arc::new(Mutex::new(BTreeSet::new())),
             content: Arc::new(Mutex::new(BTreeSet::new())),
         }
