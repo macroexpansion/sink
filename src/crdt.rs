@@ -6,10 +6,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use anyhow::{anyhow, Result};
 use jiff::Timestamp;
 
+pub type MessageID = String;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operation {
-    Add(String),
-    Remove(String),
+    Add(String),       // add content
+    Remove(MessageID), // remove by message ID
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -190,7 +192,7 @@ mod tests {
             },
             Message {
                 id: String::from("7"),
-                operation: Operation::Remove(String::from("5")),
+                operation: Operation::Remove(MessageID::from("5")),
                 timestamp: Timestamp::from_str("2025-08-11T15:48:07.693605086Z").unwrap(),
             },
         ];
@@ -204,7 +206,19 @@ mod tests {
 
         assert_eq!(
             text,
-            String::from("\n# id: 1, timestamp: 2025-08-11T15:48:01.693605086Z\n1\n# id: 2, timestamp: 2025-08-11T15:48:02.693605086Z\n2\n# id: 3, timestamp: 2025-08-11T15:48:03.693605086Z\n3\n# id: 4, timestamp: 2025-08-11T15:48:04.693605086Z\n4\n# id: 6, timestamp: 2025-08-11T15:48:06.693605086Z\n6")
+            String::from(
+                r###"
+# id: 1, timestamp: 2025-08-11T15:48:01.693605086Z
+1
+# id: 2, timestamp: 2025-08-11T15:48:02.693605086Z
+2
+# id: 3, timestamp: 2025-08-11T15:48:03.693605086Z
+3
+# id: 4, timestamp: 2025-08-11T15:48:04.693605086Z
+4
+# id: 6, timestamp: 2025-08-11T15:48:06.693605086Z
+6"###
+            )
         );
     }
 }

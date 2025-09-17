@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
         },
         Message {
             id: String::from("7"),
-            operation: Operation::Remove(String::from("5")),
+            operation: Operation::Remove(MessageID::from("5")),
             timestamp: Timestamp::from_str("2025-08-11T15:48:07.693605086Z").unwrap(),
         },
     ];
