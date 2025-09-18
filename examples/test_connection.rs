@@ -12,6 +12,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
+    let (ws_stream_2, _) = connect_async("ws://127.0.0.1:8080").await?;
+    println!("✓ Connected to server 2");
+    let (mut ws_sender_2, mut ws_receiver_2) = ws_stream_2.split();
+
     // Send registration request
     let register_request = json!({
         "jsonrpc": "2.0",
@@ -26,8 +30,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ws_sender.send(Message::Text(request_text.into())).await?;
     println!("✓ Sent registration request");
 
+    let register_request = json!({
+        "jsonrpc": "2.0",
+        "method": "client.register",
+        "params": {
+            "client_name": "TestClient"
+        },
+        "id": 2
+    });
+
+    let request_text = serde_json::to_string(&register_request)?;
+    ws_sender_2.send(Message::Text(request_text.into())).await?;
+    println!("✓ Sent registration request 2");
+
     // Wait for response
     if let Some(msg) = ws_receiver.next().await {
+        match msg? {
+            Message::Text(text) => {
+                println!("✓ Received response: {}", text);
+
+                // Parse the response
+                if let Ok(response) = serde_json::from_str::<Value>(&text) {
+                    if let Some(result) = response.get("result") {
+                        if let Some(client_id) = result.get("client_id") {
+                            println!("✓ Successfully registered with client ID: {}", client_id);
+                        }
+                    }
+                }
+            }
+            _ => println!("Received non-text message"),
+        }
+    }
+
+    if let Some(msg) = ws_receiver_2.next().await {
         match msg? {
             Message::Text(text) => {
                 println!("✓ Received response: {}", text);
@@ -66,6 +101,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match msg? {
                 Message::Text(text) => {
                     println!("✓ Received message: {}", text);
+
+                    // Check if this is the document creation response
+                    if let Ok(response) = serde_json::from_str::<Value>(&text) {
+                        if response.get("id") == Some(&json!(2)) {
+                            received_doc_response = true;
+                            if let Some(result) = response.get("result") {
+                                if let Some(doc_id) = result.get("document_id") {
+                                    println!("✓ Successfully created document with ID: {}", doc_id);
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => println!("Received non-text message"),
+            }
+        } else {
+            break;
+        }
+    }
+
+    // Wait for response (might receive notification first)
+    let mut received_doc_response = false;
+    while !received_doc_response {
+        if let Some(msg) = ws_receiver_2.next().await {
+            match msg? {
+                Message::Text(text) => {
+                    println!("✓ Received message: {} 2", text);
 
                     // Check if this is the document creation response
                     if let Ok(response) = serde_json::from_str::<Value>(&text) {

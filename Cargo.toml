@@ -8,7 +8,7 @@ anyhow = "1.0.98"
 chrono = { version = "0.4.41", features = ["serde"] }
 futures-util = "0.3.31"
 itertools = "0.14.0"
-jiff = "0.2.15"
+jiff = { version = "0.2.15", features = ["serde"] }
 nanoid = "0.4.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"

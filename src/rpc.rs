@@ -1,6 +1,8 @@
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::crdt::Message;
 
 /// JSON-RPC 2.0 Request
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,7 +47,7 @@ pub enum SyncMethod {
     UpdateDocument {
         document_id: Uuid,
         content: String,
-        timestamp: DateTime<Utc>,
+        timestamp: Timestamp,
         client_id: Uuid,
     },
 
@@ -63,25 +65,19 @@ pub enum SyncMethod {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum SyncResponse {
-    DocumentCreated {
-        document_id: Uuid,
-        name: String,
-    },
     DocumentUpdated {
-        document_id: Uuid,
         content: String,
-        timestamp: DateTime<Utc>,
     },
     DocumentContent {
         document_id: Uuid,
         content: String,
-        last_modified: DateTime<Utc>,
+        last_modified: Timestamp,
     },
     DocumentList {
         documents: Vec<DocumentInfo>,
     },
     ClientRegistered {
-        client_id: Uuid,
+        client_id: String,
     },
 }
 
@@ -89,7 +85,7 @@ pub enum SyncResponse {
 pub struct DocumentInfo {
     pub id: Uuid,
     pub name: String,
-    pub last_modified: DateTime<Utc>,
+    pub last_modified: Timestamp,
     pub content_length: usize,
 }
 
@@ -101,23 +97,37 @@ pub struct SyncNotification {
     pub params: SyncNotificationParams,
 }
 
+impl SyncNotification {
+    pub fn new(method: String, params: SyncNotificationParams) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            method,
+            params,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentUpdated {
+    pub messages: Vec<Message>,
+    pub client_id: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum SyncNotificationParams {
     #[serde(rename = "document_updated")]
     DocumentUpdated {
-        document_id: Uuid,
-        content: String,
-        timestamp: DateTime<Utc>,
-        client_id: Uuid,
+        ops: Vec<Message>,
+        client_id: String,
     },
     #[serde(rename = "client_connected")]
     ClientConnected {
-        client_id: Uuid,
+        client_id: String,
         client_name: String,
     },
     #[serde(rename = "client_disconnected")]
-    ClientDisconnected { client_id: Uuid },
+    ClientDisconnected { client_id: String },
 }
 
 impl JsonRpcRequest {
