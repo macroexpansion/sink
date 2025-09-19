@@ -16,12 +16,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    client
-        .start(|notification| {
-            println!("Received notification: {:?}", notification);
-        })
-        .await
-        .unwrap();
+    client.start().await.unwrap();
 
     Ok(())
 }

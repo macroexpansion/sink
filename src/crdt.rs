@@ -17,8 +17,7 @@ use tokio_tungstenite::{
 };
 
 use crate::rpc::{
-    JsonRpcError, JsonRpcRequest, JsonRpcResponse, SyncNotification, SyncNotificationParams,
-    SyncResponse,
+    JsonRpcError, JsonRpcRequest, JsonRpcResponse, SyncBroadcast, SyncBroadcastParams, SyncResponse,
 };
 use crate::DocumentUpdated;
 
@@ -147,7 +146,7 @@ impl CRDT {
     pub fn text(&self) -> Result<String> {
         let mut text = String::new();
         let locked_ops = self.content.lock().map_err(|_| anyhow!("lock error"))?;
-        for op in locked_ops.iter() {
+        for op in locked_ops.iter().rev() {
             if !*op.removed.borrow() {
                 let element = format!(
                     "\n# id: {id}, timestamp: {timestamp}\n{data}",
@@ -174,7 +173,7 @@ pub struct ClientInfo {
 pub struct ServerState {
     pub crdt: Arc<CRDT>,
     pub clients: RwLock<HashMap<String, ClientInfo>>,
-    pub broadcast_tx: broadcast::Sender<SyncNotification>,
+    pub broadcast_tx: broadcast::Sender<SyncBroadcast>,
 }
 
 impl ServerState {
@@ -201,9 +200,9 @@ impl ServerState {
             .insert(client_id.clone(), client_info);
 
         // Broadcast client connection
-        let notification = SyncNotification::new(
+        let notification = SyncBroadcast::new(
             "client_connected".to_string(),
-            SyncNotificationParams::ClientConnected {
+            SyncBroadcastParams::ClientConnected {
                 client_id: client_id.clone(),
                 client_name,
             },
@@ -218,24 +217,20 @@ impl ServerState {
         self.clients.write().await.remove(&client_id);
 
         // Broadcast client disconnection
-        let notification = SyncNotification::new(
+        let notification = SyncBroadcast::new(
             "client_disconnected".to_string(),
-            SyncNotificationParams::ClientDisconnected { client_id },
+            SyncBroadcastParams::ClientDisconnected { client_id },
         );
 
         let _ = self.broadcast_tx.send(notification);
     }
 
-    pub async fn broadcast_document_update(&self, content: String, client_id: String) {
-        let notification = SyncNotification::new(
+    pub async fn broadcast_document_update(&self, messages: Vec<Message>, client_id: String) {
+        let notification = SyncBroadcast::new(
             "document_updated".to_string(),
-            SyncNotificationParams::DocumentUpdated {
-                ops: vec![Message {
-                    id: nanoid::nanoid!(),
-                    operation: Operation::Add(content),
-                    timestamp: Timestamp::now(),
-                }],
-                client_id: client_id.to_string(),
+            SyncBroadcastParams::DocumentUpdated {
+                messages,
+                client_id,
             },
         );
 
@@ -362,7 +357,13 @@ async fn handle_rpc_request(
             if let Ok(params) = serde_json::from_value::<DocumentUpdated>(request.params) {
                 println!("Received document update: {:?}", params);
 
-                state.crdt.merge(params.messages).unwrap();
+                // Merge messages into CRDT
+                state.crdt.merge(params.messages.clone()).unwrap();
+
+                // Broadcast update to all clients
+                state
+                    .broadcast_document_update(params.messages, params.client_id)
+                    .await;
 
                 println!("Local state: {}", state.crdt.text().unwrap());
 
@@ -477,13 +478,7 @@ impl SyncClient {
     }
 
     /// Start listening for notifications from the server
-    pub async fn start<F>(
-        &mut self,
-        mut notification_handler: F,
-    ) -> Result<(), Box<dyn std::error::Error>>
-    where
-        F: FnMut(SyncNotification) + Send + 'static,
-    {
+    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(ws_stream) = self.ws_stream.take() {
             let (mut ws_sender, mut ws_receiver) = ws_stream.split();
             // let (_request_tx, mut _request_rx) = mpsc::unbounded_channel::<(
@@ -493,21 +488,26 @@ impl SyncClient {
 
             let client_id = self.client_id.clone().unwrap();
             let state = Arc::clone(&self.state);
-            let outgoing_task = tokio::spawn(async move {
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
-                    Self::create_message(
-                        state.clone(),
-                        &mut ws_sender,
-                        "Hello".to_string(),
-                        client_id.clone(),
-                    )
-                    .await
-                    .unwrap();
+            let outgoing_task = tokio::spawn({
+                let state = Arc::clone(&state);
+                let client_id = client_id.clone();
+                async move {
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
-                    let text = state.text().unwrap();
-                    println!("Local state: {}", text);
+                        Self::create_message(
+                            state.clone(),
+                            &mut ws_sender,
+                            "Hello".to_string(),
+                            client_id.clone(),
+                        )
+                        .await
+                        .unwrap();
+
+                        let text = state.text().unwrap();
+                        println!("Local state: {}", text);
+                    }
                 }
             });
 
@@ -517,10 +517,22 @@ impl SyncClient {
                     match msg {
                         Ok(WsMessage::Text(text)) => {
                             // Try to parse as notification first
-                            if let Ok(notification) =
-                                serde_json::from_str::<SyncNotification>(&text)
-                            {
-                                notification_handler(notification);
+                            if let Ok(notification) = serde_json::from_str::<SyncBroadcast>(&text) {
+                                println!("Received notification: {:?}", notification);
+                                match notification.params {
+                                    SyncBroadcastParams::DocumentUpdated {
+                                        messages,
+                                        client_id: sender_id,
+                                    } => {
+                                        if client_id.clone() != sender_id {
+                                            println!("Merging messages...");
+                                            Arc::clone(&state).merge(messages).unwrap();
+                                            let text = state.text().unwrap();
+                                            println!("Local state: {}", text);
+                                        }
+                                    }
+                                    _ => {}
+                                }
                             }
                             // Otherwise try to parse as response
                             else if let Ok(response) =

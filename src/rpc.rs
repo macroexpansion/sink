@@ -91,14 +91,14 @@ pub struct DocumentInfo {
 
 /// Notification for real-time updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyncNotification {
+pub struct SyncBroadcast {
     pub jsonrpc: String,
     pub method: String,
-    pub params: SyncNotificationParams,
+    pub params: SyncBroadcastParams,
 }
 
-impl SyncNotification {
-    pub fn new(method: String, params: SyncNotificationParams) -> Self {
+impl SyncBroadcast {
+    pub fn new(method: String, params: SyncBroadcastParams) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
             method,
@@ -115,10 +115,10 @@ pub struct DocumentUpdated {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum SyncNotificationParams {
+pub enum SyncBroadcastParams {
     #[serde(rename = "document_updated")]
     DocumentUpdated {
-        ops: Vec<Message>,
+        messages: Vec<Message>,
         client_id: String,
     },
     #[serde(rename = "client_connected")]
