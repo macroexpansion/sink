@@ -5,7 +5,7 @@ use jiff::Timestamp;
 use rand::rng;
 use rand::seq::SliceRandom;
 
-use sink::{Message, Operation, CRDT};
+use sink::{Message, MessageID, Operation, CRDT};
 
 #[tokio::main]
 async fn main() -> Result<()> {
