@@ -1,14 +1,15 @@
-use std::str::FromStr;
-
 use anyhow::Result;
-use jiff::Timestamp;
-use rand::rng;
-use rand::seq::SliceRandom;
+use log::LevelFilter;
 
-use sink::{Message, Operation, ServerState, SyncServer, CRDT};
+use sink::SyncServer;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or(LevelFilter::Info.as_str()),
+    )
+    .init();
+
     let server = SyncServer::new();
     server.start("0.0.0.0:5000").await.unwrap();
 

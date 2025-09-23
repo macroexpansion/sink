@@ -3,8 +3,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
+use log::{debug, error, info};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::{accept_async, tungstenite::Message as WsMessage};
 
 use crate::*;
@@ -100,13 +101,13 @@ impl SyncServer {
 
     pub async fn start(&self, addr: &str) -> anyhow::Result<()> {
         let listener = TcpListener::bind(addr).await?;
-        println!("Text sync server listening on: {}", addr);
+        info!("Text sync server listening on: {}", addr);
 
         while let Ok((stream, addr)) = listener.accept().await {
             let state = Arc::clone(&self.state);
             tokio::spawn(async move {
                 if let Err(e) = handle_connection(stream, addr, state).await {
-                    eprintln!("Error handling connection from {}: {}", addr, e);
+                    error!("Error handling connection from {}: {}", addr, e);
                 }
             });
         }
@@ -121,7 +122,7 @@ async fn handle_connection(
     state: Arc<ServerState>,
 ) -> anyhow::Result<()> {
     let ws_stream = accept_async(stream).await?;
-    println!("WebSocket connection established: {}", addr);
+    info!("WebSocket connection established: {}", addr);
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
     let mut client_id: Option<String> = None;
@@ -133,9 +134,9 @@ async fn handle_connection(
             msg = ws_receiver.next() => {
                 match msg {
                     Some(Ok(WsMessage::Text(text))) => {
-                        println!("Received message: {}", text);
+                        debug!("Received message: {}", text);
                         if let Ok(request) = serde_json::from_str::<JsonRpcRequest>(&text) {
-                            println!("Received request: {:?}", request);
+                            debug!("Received request: {:?}", request);
                             let response = handle_rpc_request(request, &state, &mut client_id, addr).await;
                             if let Ok(response_text) = serde_json::to_string(&response) {
                                 if ws_sender.send(WsMessage::Text(response_text.into())).await.is_err() {
@@ -146,7 +147,7 @@ async fn handle_connection(
                     }
                     Some(Ok(WsMessage::Close(_))) => break,
                     Some(Err(e)) => {
-                        eprintln!("WebSocket error: {}", e);
+                        error!("WebSocket error: {}", e);
                         break;
                     }
                     None => break,
@@ -169,7 +170,7 @@ async fn handle_connection(
         state.unregister_client(id).await;
     }
 
-    println!("WebSocket connection closed: {}", addr);
+    info!("WebSocket connection closed: {}", addr);
     Ok(())
 }
 
@@ -181,7 +182,7 @@ async fn handle_rpc_request(
 ) -> JsonRpcResponse {
     match request.params {
         RpcRequestParams::ClientRegister { client_name } => {
-            println!("Registering client: {}", client_name);
+            info!("Registering client: {}", client_name);
             let id = state.register_client(client_name.clone(), addr).await;
             *client_id = Some(id.clone());
 
@@ -194,7 +195,7 @@ async fn handle_rpc_request(
             ref messages,
             ref client_id,
         } => {
-            println!("Received document update: {:?}", request.params);
+            debug!("Received document update: {:?}", request.params);
 
             // Merge messages into CRDT
             if let Err(e) = state.crdt.merge(messages.clone()) {
@@ -206,7 +207,7 @@ async fn handle_rpc_request(
                 .broadcast_document_update(messages.clone(), client_id.clone())
                 .await;
 
-            println!("Local state: {}", state.crdt.text().unwrap());
+            debug!("Local state: {}", state.crdt.text().unwrap());
 
             let response = JsonRpcResult::DocumentUpdated {
                 content: "OK".to_string(),

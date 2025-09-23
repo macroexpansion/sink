@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use jiff::Timestamp;
+use log::{debug, LevelFilter};
 use rand::rng;
 use rand::seq::SliceRandom;
 
@@ -9,6 +10,11 @@ use sink::{Message, MessageID, Operation, CRDT};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or(LevelFilter::Info.as_str()),
+    )
+    .init();
+
     let crdt = CRDT::new();
 
     let mut ops = vec![
@@ -55,10 +61,10 @@ async fn main() -> Result<()> {
     crdt.merge(ops)?;
 
     let a = crdt.list()?;
-    println!("{:#?}", a);
+    debug!("{:#?}", a);
 
     let text = crdt.text()?;
-    println!("{:?}", text);
+    debug!("{:?}", text);
 
     Ok(())
 }

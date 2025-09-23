@@ -4,6 +4,7 @@ use anyhow::anyhow;
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
 use jiff::Timestamp;
+use log::{debug, error, info};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     connect_async, tungstenite::Message as WsMessage, MaybeTlsStream, WebSocketStream,
@@ -38,7 +39,7 @@ impl SyncClient {
         // Register with the server
         self.register().await?;
 
-        println!("Connected to sync server at {}", url);
+        info!("Connected to sync server at {}", url);
         Ok(())
     }
 
@@ -53,7 +54,7 @@ impl SyncClient {
         if let Some(result) = response.result {
             if let JsonRpcResult::ClientRegistered { client_id } = result {
                 self.client_id = Some(client_id.clone());
-                println!("Registered with client ID: {}", client_id);
+                info!("Registered with client ID: {}", client_id);
                 return Ok(());
             }
         }
@@ -130,7 +131,7 @@ impl SyncClient {
                         .unwrap();
 
                         let text = state.text().unwrap();
-                        println!("Local state: {}", text);
+                        debug!("Local state: {}", text);
                     }
                 }
             });
@@ -142,17 +143,17 @@ impl SyncClient {
                         Ok(WsMessage::Text(text)) => {
                             // Try to parse as notification first
                             if let Ok(notification) = serde_json::from_str::<SyncBroadcast>(&text) {
-                                println!("Received notification: {:?}", notification);
+                                debug!("Received notification: {:?}", notification);
                                 match notification.params {
                                     SyncBroadcastParams::DocumentUpdated {
                                         messages,
                                         client_id: sender_id,
                                     } => {
                                         if client_id.clone() != sender_id {
-                                            println!("Merging messages...");
+                                            debug!("Merging messages...");
                                             Arc::clone(&state).merge(messages).unwrap();
                                             let text = state.text().unwrap();
-                                            println!("Local state: {}", text);
+                                            debug!("Local state: {}", text);
                                         }
                                     }
                                     _ => {}
@@ -162,18 +163,18 @@ impl SyncClient {
                             else if let Ok(response) =
                                 serde_json::from_str::<JsonRpcResponse>(&text)
                             {
-                                println!("Received response: {:?}", response);
+                                debug!("Received response: {:?}", response);
                             }
                             // Otherwise try to parse as response
                             else if let Ok(response) =
                                 serde_json::from_str::<JsonRpcResult>(&text)
                             {
-                                println!("Received response: {:?}", response);
+                                debug!("Received response: {:?}", response);
                             }
                         }
                         Ok(WsMessage::Close(_)) => break,
                         Err(e) => {
-                            eprintln!("WebSocket error: {}", e);
+                            error!("WebSocket error: {}", e);
                             break;
                         }
                         _ => {}
