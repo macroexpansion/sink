@@ -80,3 +80,9 @@ impl From<&Message> for Text {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClientRequest {
+    Sync,
+    Update { content: String },
+}

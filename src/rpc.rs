@@ -1,16 +1,16 @@
 use serde::{Deserialize, Serialize};
 
-use crate::Message;
+use crate::{Message, MessageID};
 
 /// Text synchronization methods
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RpcMethod {
-    #[serde(rename = "document.update")]
-    DocumentUpdate,
-
-    #[serde(rename = "client.register")]
-    ClientRegister,
-}
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub enum RpcMethod {
+//     #[serde(rename = "document.update")]
+//     DocumentUpdate,
+//
+//     #[serde(rename = "client.register")]
+//     ClientRegister,
+// }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params")]
@@ -24,6 +24,9 @@ pub enum RpcRequestParams {
 
     #[serde(rename = "client.register")]
     ClientRegister { client_name: String },
+
+    #[serde(rename = "client.sync")]
+    ClientSync { last_message_id: Option<String> },
 }
 
 /// JSON-RPC 2.0 Request
@@ -86,8 +89,16 @@ impl JsonRpcResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum JsonRpcResult {
-    DocumentUpdated { content: String },
-    ClientRegistered { client_id: String },
+    DocumentUpdated {
+        content: String,
+    },
+    ClientRegistered {
+        client_id: String,
+    },
+    ClientSynced {
+        last_message_id: MessageID,
+        sync_messages: Vec<Message>,
+    },
 }
 
 /// JSON-RPC 2.0 Error

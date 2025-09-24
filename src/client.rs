@@ -4,8 +4,9 @@ use anyhow::anyhow;
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
 use jiff::Timestamp;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio_tungstenite::{
     connect_async, tungstenite::Message as WsMessage, MaybeTlsStream, WebSocketStream,
 };
@@ -19,15 +20,20 @@ pub struct SyncClient {
     client_id: Option<String>,
     client_name: String,
     ws_stream: Option<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+    pub request_tx: UnboundedSender<ClientRequest>,
+    request_rx: Option<UnboundedReceiver<ClientRequest>>,
 }
 
 impl SyncClient {
     pub fn new(client_name: String) -> Self {
+        let (request_tx, request_rx) = mpsc::unbounded_channel::<ClientRequest>();
         Self {
             state: Arc::new(CRDT::new()),
             client_id: None,
             client_name,
             ws_stream: None,
+            request_tx,
+            request_rx: Some(request_rx),
         }
     }
 
@@ -89,6 +95,15 @@ impl SyncClient {
         Ok(())
     }
 
+    pub async fn create_client_sync_request(
+        sender: &mut SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, WsMessage>,
+        last_message_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        Self::send_rpc_request(sender, RpcRequestParams::ClientSync { last_message_id }).await?;
+
+        Ok(())
+    }
+
     /// Send a JSON-RPC request over the WebSocketj
     pub async fn send_rpc_request(
         sender: &mut SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, WsMessage>,
@@ -106,32 +121,34 @@ impl SyncClient {
     pub async fn start(&mut self) -> anyhow::Result<()> {
         if let Some(ws_stream) = self.ws_stream.take() {
             let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-            // let (_request_tx, mut _request_rx) = mpsc::unbounded_channel::<(
-            //     JsonRpcRequest,
-            //     tokio::sync::oneshot::Sender<JsonRpcResponse>,
-            // )>();
 
             let client_id = self.client_id.clone().unwrap();
             let state = Arc::clone(&self.state);
+            let mut request_rx = std::mem::take(&mut self.request_rx).unwrap();
 
             let outgoing_task = tokio::spawn({
                 let state = Arc::clone(&state);
                 let client_id = client_id.clone();
                 async move {
-                    loop {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
-                        Self::create_message(
-                            state.clone(),
-                            &mut ws_sender,
-                            "Hello".to_string(),
-                            client_id.clone(),
-                        )
-                        .await
-                        .unwrap();
-
-                        let text = state.text().unwrap();
-                        debug!("Local state: {}", text);
+                    while let Some(msg) = request_rx.recv().await {
+                        info!("Sending request: {:?}", msg);
+                        match msg {
+                            ClientRequest::Sync => {
+                                Self::create_client_sync_request(&mut ws_sender, None)
+                                    .await
+                                    .unwrap();
+                            }
+                            ClientRequest::Update { content } => {
+                                Self::create_message(
+                                    state.clone(),
+                                    &mut ws_sender,
+                                    content,
+                                    client_id.clone(),
+                                )
+                                .await
+                                .unwrap();
+                            }
+                        }
                     }
                 }
             });
@@ -164,6 +181,17 @@ impl SyncClient {
                                 serde_json::from_str::<JsonRpcResponse>(&text)
                             {
                                 debug!("Received response: {:?}", response);
+                                match response.result {
+                                    Some(JsonRpcResult::ClientSynced {
+                                        last_message_id,
+                                        sync_messages,
+                                    }) => {
+                                        Arc::clone(&state).merge(sync_messages).unwrap();
+                                        let text = state.text().unwrap();
+                                        info!("Sycned local state: {}", text);
+                                    }
+                                    _ => {}
+                                }
                             }
                             // Otherwise try to parse as response
                             else if let Ok(response) =
@@ -172,12 +200,17 @@ impl SyncClient {
                                 debug!("Received response: {:?}", response);
                             }
                         }
-                        Ok(WsMessage::Close(_)) => break,
+                        Ok(WsMessage::Close(_)) => {
+                            info!("WebSocket closed");
+                            break;
+                        }
                         Err(e) => {
                             error!("WebSocket error: {}", e);
                             break;
                         }
-                        _ => {}
+                        _ => {
+                            warn!("Unknown message {:?}", msg);
+                        }
                     }
                 }
             });

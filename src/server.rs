@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::{accept_async, tungstenite::Message as WsMessage};
@@ -145,13 +145,21 @@ async fn handle_connection(
                             }
                         }
                     }
-                    Some(Ok(WsMessage::Close(_))) => break,
+                    Some(Ok(WsMessage::Close(_))) => {
+                        info!("WebSocket closed");
+                        break;
+                    }
                     Some(Err(e)) => {
                         error!("WebSocket error: {}", e);
                         break;
                     }
-                    None => break,
-                    _ => {}
+                    None => {
+                        info!("No messages");
+                        break;
+                    }
+                    _ => {
+                        warn!("Unknown message");
+                    }
                 }
             }
             // Handle broadcasts
@@ -195,7 +203,7 @@ async fn handle_rpc_request(
             ref messages,
             ref client_id,
         } => {
-            debug!("Received document update: {:?}", request.params);
+            info!("Received document update: {:?}", request.params);
 
             // Merge messages into CRDT
             if let Err(e) = state.crdt.merge(messages.clone()) {
@@ -213,6 +221,35 @@ async fn handle_rpc_request(
                 content: "OK".to_string(),
             };
             return JsonRpcResponse::success(response, request.id);
+        }
+        RpcRequestParams::ClientSync { last_message_id } => {
+            info!("Received client sync request: {:?}", last_message_id);
+
+            let messages = vec![
+                Message {
+                    id: "1".to_string(),
+                    operation: Operation::Add("Client".to_string()),
+                    timestamp: Timestamp::now(),
+                },
+                Message {
+                    id: "2".to_string(),
+                    operation: Operation::Add("Sync".to_string()),
+                    timestamp: Timestamp::now(),
+                },
+                Message {
+                    id: "3".to_string(),
+                    operation: Operation::Add("!".to_string()),
+                    timestamp: Timestamp::now(),
+                },
+            ];
+
+            return JsonRpcResponse::success(
+                JsonRpcResult::ClientSynced {
+                    last_message_id: "last_message_id".to_string(),
+                    sync_messages: messages,
+                },
+                request.id,
+            );
         }
     }
 }
