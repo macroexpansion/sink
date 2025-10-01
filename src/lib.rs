@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 
 use jiff::Timestamp;
+use ring::digest::{Context, Digest, SHA1_FOR_LEGACY_USE_ONLY};
 use serde::{Deserialize, Serialize};
 
 pub type MessageID = String;
@@ -20,6 +21,35 @@ pub type MessageID = String;
 pub enum Operation {
     Add(String),       // add content
     Remove(MessageID), // remove by message ID
+}
+
+#[derive(Debug, Clone)]
+pub struct HashBlock {
+    id: String,
+    hash: String,
+}
+
+impl HashBlock {
+    pub fn new(id: String, hash: String) -> Self {
+        Self { id, hash }
+    }
+
+    pub fn compute_from(id: String, prev_hash: &[u8]) -> Self {
+        let digest = Self::compute_hash(&id, prev_hash);
+        let hash = hex::encode(digest);
+        Self { id, hash }
+    }
+
+    pub fn compute_hash(id: &str, prev_hash: &[u8]) -> Digest {
+        let mut context = Context::new(&SHA1_FOR_LEGACY_USE_ONLY);
+        context.update(id.as_bytes());
+        context.update(prev_hash);
+        context.finish()
+    }
+
+    pub fn hash(&self) -> Vec<u8> {
+        hex::decode(&self.hash).unwrap()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

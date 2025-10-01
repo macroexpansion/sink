@@ -3,20 +3,23 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::{anyhow, Result};
 
-use crate::{Message, Operation, Text};
+use crate::{HashBlock, Message, Operation, Text};
 
 /// RGA-inspired CRDT implementation
 #[derive(Debug, Clone)]
 pub struct CRDT {
     ops: Arc<Mutex<BTreeSet<Message>>>,
     content: Arc<Mutex<BTreeSet<Text>>>,
+    hash_chain: Arc<Mutex<Vec<HashBlock>>>,
 }
 
 impl CRDT {
     pub fn new() -> Self {
+        let hash_chain = vec![HashBlock::new("0".to_string(), "0".repeat(40))];
         Self {
             ops: Arc::new(Mutex::new(BTreeSet::new())),
             content: Arc::new(Mutex::new(BTreeSet::new())),
+            hash_chain: Arc::new(Mutex::new(hash_chain)),
         }
     }
 
@@ -50,9 +53,15 @@ impl CRDT {
 
         let mut locked_ops = self.ops.lock().map_err(|_| anyhow!("lock error"))?;
         let mut locked_content = self.content.lock().map_err(|_| anyhow!("lock error"))?;
+        let mut locked_hash_chain = self.hash_chain.lock().map_err(|_| anyhow!("lock error"))?;
 
         for op in ops {
             Self::update(&mut locked_ops, &mut locked_content, op)?;
+        }
+
+        for op in locked_ops.iter() {
+            let prev_hash = locked_hash_chain.last().unwrap().hash();
+            locked_hash_chain.push(HashBlock::compute_from(op.id.clone(), &prev_hash));
         }
 
         Ok(())
@@ -73,6 +82,11 @@ impl CRDT {
             }
         }
         Ok(text)
+    }
+
+    pub fn hash_chain(&self) -> Result<Vec<HashBlock>> {
+        let locked_hash_chain = self.hash_chain.lock().map_err(|_| anyhow!("lock error"))?;
+        Ok(locked_hash_chain.clone())
     }
 }
 
@@ -134,7 +148,6 @@ mod tests {
         crdt.merge(ops).unwrap();
 
         let text = crdt.text().unwrap();
-
         assert_eq!(
             text,
             String::from(
@@ -151,5 +164,23 @@ mod tests {
 1"###
             )
         );
+
+        let hash_chain = crdt.hash_chain().unwrap();
+        println!("{:#?}", hash_chain);
+
+        let expected_hashes = vec![
+            "0000000000000000000000000000000000000000",
+            "1eb53bed2bf35a2c9f8e608f0ecb1485e03e01e3",
+            "fdb99193d4eabcfadbf04b8d3dbda0fdd459d9d1",
+            "17350e1bad4ace58a036c628e3e369b7d69732f2",
+            "2811b0fce0fe29a7f9a43899b2b4077b085e0607",
+            "c5a19a2a549b4209bfee4a0fe7626349ba43d8af",
+            "090f7f7aa9d47cec924ffa911afabffb91cb9b0d",
+            "25bbbc46c4ec1068202563dad3e78b0ab7ed55fb",
+        ];
+        for (block, expected_hash) in hash_chain.iter().zip(expected_hashes.iter()) {
+            assert_eq!(block.hash, *expected_hash);
+        }
+        assert_eq!(hash_chain.len(), 8);
     }
 }
