@@ -338,4 +338,70 @@ mod tests {
             assert_eq!(result.id, expect);
         }
     }
+
+    #[test]
+    fn test_compare_equal() {
+        let mut rng = rng();
+
+        let crdt_1 = CRDT::new();
+        let mut ops = vec![
+            Message {
+                id: String::from("1"),
+                operation: Operation::Add(String::from("1")),
+                timestamp: Timestamp::from_str("2025-08-11T15:48:01.693605086Z").unwrap(),
+            },
+            Message {
+                id: String::from("2"),
+                operation: Operation::Add(String::from("2")),
+                timestamp: Timestamp::from_str("2025-08-11T15:48:02.693605086Z").unwrap(),
+            },
+            Message {
+                id: String::from("3"),
+                operation: Operation::Add(String::from("3")),
+                timestamp: Timestamp::from_str("2025-08-11T15:48:03.693605086Z").unwrap(),
+            },
+            Message {
+                id: String::from("4"),
+                operation: Operation::Add(String::from("4")),
+                timestamp: Timestamp::from_str("2025-08-11T15:48:04.693605086Z").unwrap(),
+            },
+        ];
+        ops.shuffle(&mut rng);
+        crdt_1.merge(ops).unwrap();
+
+        let crdt_2 = CRDT::new();
+        let mut ops = vec![
+            Message {
+                id: String::from("1"),
+                operation: Operation::Add(String::from("1")),
+                timestamp: Timestamp::from_str("2025-08-11T15:48:01.693605086Z").unwrap(),
+            },
+            Message {
+                id: String::from("2"),
+                operation: Operation::Add(String::from("2")),
+                timestamp: Timestamp::from_str("2025-08-11T15:48:02.693605086Z").unwrap(),
+            },
+            Message {
+                id: String::from("3"),
+                operation: Operation::Add(String::from("3")),
+                timestamp: Timestamp::from_str("2025-08-11T15:48:03.693605086Z").unwrap(),
+            },
+            Message {
+                id: String::from("4"),
+                operation: Operation::Add(String::from("4")),
+                timestamp: Timestamp::from_str("2025-08-11T15:48:04.693605086Z").unwrap(),
+            },
+        ];
+        ops.shuffle(&mut rng);
+        crdt_2.merge(ops).unwrap();
+        let compare_message = CompareMessage {
+            hash_block: crdt_2.hash_chain().unwrap()[4].clone(),
+            timestamp: crdt_2.list().unwrap().last().unwrap().timestamp,
+            message_position: crdt_2.list().unwrap().len(),
+        };
+        println!("{:#?}", compare_message);
+
+        let compare = crdt_1.compare(compare_message).unwrap();
+        println!("{:#?}", compare);
+    }
 }
